@@ -41,7 +41,7 @@
 
 | 경로 | 설명 |
 |---|---|
-| `terraform/` | VPC + EKS 1.24 + 노드그룹 + Bastion (`terraform-aws-modules` 기반) |
+| `terraform/` | VPC + EKS 1.24 + 노드그룹 + Bastion (`terraform-aws-modules` 기반) · *팀원과 페어 작성, [AUTHORS](terraform/AUTHORS.md) 참고* |
 | `cicd/` | Jenkins 파이프라인 (Checkout → ECR Login → Build → Push → Manifest 업데이트 → Istio inject) |
 | `gitops/argocd/` | ArgoCD 설치 스크립트와 매니페스트 |
 | `monitoring/prometheus/` | Prometheus 서버, ConfigMap(스크랩 룰 + 알람 룰), RBAC, node-exporter |
