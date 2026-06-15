@@ -1,0 +1,129 @@
+pipeline {
+    agent {
+        label 'build_only'
+    }
+    
+    environment {
+        // Jenkins Credentials / Global Environment 로 주입
+        gitName = "${env.GIT_USER}"
+        gitEmail = "${env.GIT_EMAIL}"
+        gitWebaddress = "${env.GIT_HTTPS_URL}"
+        gitSshaddress = "${env.GIT_SSH_URL}"
+        gitCredential = "${env.GIT_CREDENTIAL_ID}"
+        ECR_Repository_name = "${env.ECR_REPOSITORY}"
+        ECR_Registry = "${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com"
+        AWS_REGION = "${env.AWS_REGION}"
+    }
+    
+    stages {
+        stage('Checkout Github') {
+            steps {
+                checkout([$class: 'GitSCM', branches: [[name: '*/main']], extensions: [], userRemoteConfigs: [[credentialsId: gitCredential, url: gitWebaddress]]])
+            }
+            post {
+                failure {
+                    echo 'Repository clone failure'
+                }
+                success {
+                    echo 'Repository clone success'
+                }
+            }
+        }
+        
+        stage('Docker Login to ECR') {
+            steps {
+                withCredentials([aws(credentialsId: 'aws_cre', region: AWS_REGION)]) {
+                    sh "aws ecr get-login-password | docker login --username AWS --password-stdin ${ECR_Registry}"
+                }
+            }
+            post {
+                failure {
+                    echo 'Docker login to ECR failure'
+                }
+                success {
+                    echo 'Docker login to ECR success'                    
+                }
+            }
+        }
+
+        stage('Docker Image Build') {
+            steps {
+                sh "sudo docker build -t ${ECR_Registry}/${ECR_Repository_name}:${currentBuild.number} ."
+                sh "sudo docker build -t ${ECR_Registry}/${ECR_Repository_name}:latest ."
+            }
+            post {
+                failure {
+                    echo 'Docker build failure'
+                    sh "docker system prune -a --force"
+                }
+                success {
+                    echo 'Docker build success'
+                }
+            }
+        }
+        stage('Docker Image Push') {
+            steps {
+                sh "sudo docker push ${ECR_Registry}/${ECR_Repository_name}:${currentBuild.number}"
+                sh "sudo docker push ${ECR_Registry}/${ECR_Repository_name}:latest"
+            }
+            post {
+                failure {
+                    echo 'Docker image Push failure'
+                    sh "docker image rm -f ${ECR_Registry}/${ECR_Repository_name}:${currentBuild.number}"
+                    sh "docker image rm -f ${ECR_Registry}/${ECR_Repository_name}:latest"
+                }
+                success {
+                    echo 'Docker image Push success'
+                    sh "docker image rm -f ${ECR_Registry}/${ECR_Repository_name}:${currentBuild.number}"
+                    sh "docker image rm -f ${ECR_Registry}/${ECR_Repository_name}:latest"                   
+                }
+            }
+        }
+
+        stage('k8s Manifest File Update') {
+            steps {
+                git credentialsId: gitCredential,
+                url: gitWebaddress,
+                branch: 'main'
+
+                sh "git config --global user.email ${gitEmail}"
+                sh "git config --global user.name ${gitName}"
+                sh "sed -i 's@${ECR_Repository_name}:.*@${ECR_Repository_name}:${currentBuild.number}@g' argocd/front-dep.yaml"                
+                sh "git add ."
+                sh "git commit -m 'fix:${ECR_Repository_name} ${currentBuild.number} image versioning'"
+                sh "git branch -M main"
+                sh "git remote remove origin"
+                sh "git remote add origin ${gitSshaddress}"
+                sh "git push -u origin main"
+            }
+            post {
+                failure {
+                    echo 'Container Deploy failure'
+                }
+                success {
+                    echo 'Container Deploy success'
+                }
+            }
+        }
+        
+        stage('Istio Sidecar Injection') {
+            steps {
+                    // 주입된 sidecar를 포함한 리소스를 배포합니다.
+                    sh 'sudo istioctl kube-inject -f front-dp.yaml > ./istio/injection-front-dp.yaml'
+                }
+            post {
+                failure {
+                    echo 'Istio Sidecar Injection failure'
+                }
+                success {
+                    echo 'Istio Sidecar Injection success'  
+                }
+            }
+        }
+        
+        
+    }
+}
+
+
+

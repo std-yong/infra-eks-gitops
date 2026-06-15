@@ -1,0 +1,38 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: alertmanager-config
+  namespace: monitoring
+data:
+  config.yml: |-
+    global:
+    templates:
+    - '/etc/alertmanager/*.tmpl'
+    route:
+      receiver: alert-emailer
+      group_by: ['alertname', 'priority']
+      group_wait: 10s
+      repeat_interval: 30m
+      routes:
+        - receiver: slack_demo
+        # Send severity=slack alerts to slack.
+          match:
+            severity: fatal
+          group_wait: 10s
+          repeat_interval: 1m
+
+    receivers:
+    - name: alert-emailer
+      email_configs:
+      - to: ${ALERT_EMAIL_TO}
+        send_resolved: false
+        from: ${ALERT_EMAIL_FROM}
+        smarthost: ${SMTP_HOST}
+        require_tls: false
+    - name: slack_demo
+      slack_configs:
+      # api_url 은 K8s Secret (alertmanager-slack) 으로 분리해
+      # envsubst 또는 api_url_file 로 주입할 것. ConfigMap 평문 저장 금지.
+      - api_url: ${SLACK_WEBHOOK_URL}
+        channel: '#prometheus-alarm'
+        send_resolved: true

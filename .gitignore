@@ -1,0 +1,25 @@
+# Secrets
+.env
+.env.local
+*.tfvars
+!*.tfvars.example
+
+# Terraform state
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# AWS
+.aws/
+*.pem
+*.key
+
+# Binaries
+*.tar.gz
+node_exporter/
+
+# IDE
+.idea/
+.vscode/
+.DS_Store
