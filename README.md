@@ -7,33 +7,19 @@
 
 ---
 
-## 전체 구성도
+## 인프라 아키텍처
 
-```
-┌─────────────┐   git push   ┌─────────────┐   build/push   ┌─────────┐
-│ Developer   │ ───────────▶ │ Jenkins     │ ─────────────▶ │  ECR    │
-└─────────────┘              └──────┬──────┘                └────┬────┘
-                                    │ manifest commit            │
-                                    ▼                            ▼
-                             ┌─────────────┐   pull/sync   ┌──────────┐
-                             │ GitHub repo │ ◀──────────── │ ArgoCD   │
-                             └─────────────┘               └────┬─────┘
-                                                                │ apply
-                                                                ▼
-                                                         ┌──────────────┐
-                                                         │   EKS 1.24   │
-                                                         │  (Terraform) │
-                                                         └──────┬───────┘
-                                                                │
-                                            ┌───────────────────┴───────────────┐
-                                            ▼                                   ▼
-                                  ┌──────────────────┐               ┌───────────────────┐
-                                  │ Prometheus +     │               │ App: front/back   │
-                                  │ Grafana + Alert  │ ──Slack/Email │ (Istio sidecar)   │
-                                  └──────────────────┘               └───────────────────┘
-```
+Terraform으로 VPC + EKS 1.24 + 노드그룹 + RDS Multi-AZ를 프로비저닝, Route 53 + ACM으로 HTTPS 종단:
 
-> 다이어그램 PNG 자리: `docs/architecture.png` (추후 교체)
+![Infra Architecture](docs/images/architecture.png)
+
+서비스 토폴로지 — ALB → Nginx Ingress → Next.js(프론트) / Django REST(백엔드) → RDS:
+
+![Service Topology](docs/images/service-topology.png)
+
+GitOps CI/CD 흐름 — Jenkins가 ECR 푸시 + manifest values 업데이트, ArgoCD가 Git을 단일 진실의 원천으로 EKS 동기화:
+
+![GitOps CI/CD](docs/images/gitops-cicd.png)
 
 ---
 
@@ -57,6 +43,10 @@
 - **Spinnaker → ArgoCD**: Spinnaker는 별도 빌드 머신에서 16GB 메모리 OOM. ArgoCD는 EKS 내부에 가볍게 올라가고 GitOps 모델이 팀 워크플로우에도 맞아 교체.
 - **Helm 대신 Raw YAML + Kustomize**: 차트 학습/디버깅 비용보다 매니페스트를 그대로 읽고 고칠 수 있는 쪽이 팀에 유리하다고 판단. 환경 분기만 Kustomize overlay로 처리.
 - **모니터링 4계층 분리**: Host(node-exporter), Container(cAdvisor), Application(/metrics), K8s(kube-state-metrics)를 각각 다른 Grafana 대시보드로 분리해 장애 원인 추적 시간을 줄였음.
+
+Prometheus 풀-푸시 혼합 구조 (장기 실행 서비스는 Exporter pull, 단기 잡은 Push Gateway 경유):
+
+![Monitoring Stack](docs/images/monitoring-stack.png)
 
 자세한 내용은 [docs/architecture.md](docs/architecture.md) · [docs/troubleshooting.md](docs/troubleshooting.md).
 
